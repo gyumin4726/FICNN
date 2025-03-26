@@ -23,7 +23,7 @@ def prior_matching_loss(input_images, labels, class_representatives, classes, λ
         for c_idx, channel in enumerate(['red', 'green', 'blue']):
             coeff_list = []
 
-            for (y, x) in edge_coords[:max_edges]:
+            for (y, x) in edge_coords[:max_edges]:  # 여러 엣지 활용
                 angle = angle_map[y, x]
                 neighbors = get_neighbor_pixels_by_gradient(y, x, angle, step=1, H=H, W=W)
                 if neighbors is None:
@@ -35,7 +35,9 @@ def prior_matching_loss(input_images, labels, class_representatives, classes, λ
                 v1 = image[c_idx, y1, x1].item()
                 v2 = image[c_idx, y2, x2].item()
 
-                coeff = fit_polynomial_with_gradient(x1n, y1n, v1, x2n, y2n, v2)
+                # 엣지 데이터를 리스트로 묶어서 전달
+                edge_tuple = [(x1n, y1n, v1), (x2n, y2n, v2)]
+                coeff = fit_polynomial_with_gradient(edge_tuple)  # 리스트로 전달
                 if coeff is not None:
                     coeff_list.append(coeff.to(device))
 

@@ -6,6 +6,15 @@ from tqdm import tqdm
 from utils.edge import rgb_to_gray_tensor, extract_edges, get_edge_gradient_direction, get_neighbor_pixels_by_gradient
 from utils.polynomial import fit_polynomial_with_gradient
 
+def save_polynomials(patchwise_polynomials, filename):
+    torch.save(patchwise_polynomials, filename)
+    print(f"다항식이 {filename}에 저장되었습니다.")
+
+def load_polynomials(filename):
+    patchwise_polynomials = torch.load(filename)
+    print(f"다항식이 {filename}에서 불러와졌습니다.")
+    return patchwise_polynomials
+
 def extract_gradient_polynomials(image, degree=2, max_patches=100):
     H, W = image.shape[1], image.shape[2]
     gray = rgb_to_gray_tensor(image)
@@ -66,7 +75,7 @@ def compute_classwise_mean_polynomials(patchwise_polynomials, classes):
     print("[INFO] 클래스별 평균 prior 다항식 생성 완료 ✅")
     return class_representatives
 
-def load_data_and_preprocess(degree=2, max_patches_per_image=50, max_images_per_class=1000):
+def load_data_and_preprocess(degree=2, max_patches_per_image=50, max_images_per_class=1000, save_file='patchwise_polynomials.pth'):
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -78,14 +87,20 @@ def load_data_and_preprocess(degree=2, max_patches_per_image=50, max_images_per_
     testloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False)
     classes = trainset.classes
 
+    # 기존 다항식 파일이 있으면 로드
+    try:
+        patchwise_polynomials = load_polynomials(save_file)
+        print(f"저장된 다항식 파일 {save_file}을 성공적으로 불러왔습니다.")
+        return trainloader, testloader, classes, patchwise_polynomials, None
+    except FileNotFoundError:
+        print(f"저장된 다항식 파일 {save_file}을 찾을 수 없습니다. 다항식을 추출하여 저장합니다.")
+
+    # 다항식 추출
     patchwise_polynomials = {
         class_name: {'red': [], 'green': [], 'blue': []}
         for class_name in classes
     }
 
-    print("[INFO] 엣지 기반 다항식 prior 추출 중...")
-
-    # ✅ 클래스별 이미지 미리 모으기 (속도 개선 + tqdm 정확도 향상)
     classwise_images = defaultdict(list)
     for img, label in trainset:
         class_name = classes[label]
@@ -104,5 +119,8 @@ def load_data_and_preprocess(degree=2, max_patches_per_image=50, max_images_per_
     print("[INFO] 모든 클래스 prior 추출 완료 ✅")
 
     classwise_representatives = compute_classwise_mean_polynomials(patchwise_polynomials, classes)
+
+    # 추출한 다항식을 저장
+    save_polynomials(patchwise_polynomials, save_file)
 
     return trainloader, testloader, classes, patchwise_polynomials, classwise_representatives
