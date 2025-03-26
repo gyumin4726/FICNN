@@ -91,7 +91,9 @@ def load_data_and_preprocess(degree=2, max_patches_per_image=50, max_images_per_
     try:
         patchwise_polynomials = load_polynomials(save_file)
         print(f"저장된 다항식 파일 {save_file}을 성공적으로 불러왔습니다.")
-        return trainloader, testloader, classes, patchwise_polynomials, None
+        # 저장된 다항식을 불러온 경우에도 클래스 대표 다항식을 계산합니다.
+        classwise_representatives = compute_classwise_mean_polynomials(patchwise_polynomials, classes)
+        return trainloader, testloader, classes, patchwise_polynomials, classwise_representatives
     except FileNotFoundError:
         print(f"저장된 다항식 파일 {save_file}을 찾을 수 없습니다. 다항식을 추출하여 저장합니다.")
 
