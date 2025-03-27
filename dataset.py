@@ -55,27 +55,38 @@ def extract_gradient_polynomials(image, degree=2, max_patches=100):
 
     for channel in ['red', 'green', 'blue']:
         if len(edge_tuples[channel]) >= 2:
-            coeff = fit_polynomial_with_gradient(edge_tuples[channel])
+            coeff = fit_polynomial_with_gradient(edge_tuples[channel], degree)
             patch_polys[channel].append(coeff)
 
     return patch_polys
 
-def compute_classwise_mean_polynomials(patchwise_polynomials, classes):
-    class_representatives = {}
-    for class_name in classes:
-        class_representatives[class_name] = {}
-        for channel in ['red', 'green', 'blue']:
-            all_vecs = patchwise_polynomials[class_name][channel]
-            if len(all_vecs) == 0:
-                print(f"[WARNING] {class_name} 클래스의 {channel} 채널 prior 없음")
-                continue
-            stacked = torch.stack(all_vecs)
-            mean_vec = stacked.mean(dim=0)
-            class_representatives[class_name][channel] = mean_vec
-    print("[INFO] 클래스별 평균 prior 다항식 생성 완료 ✅")
-    return class_representatives
+from sklearn.cluster import KMeans
 
-def load_data_and_preprocess(degree=2, max_patches_per_image=50, max_images_per_class=1000, save_file='patchwise_polynomials.pth'):
+def compute_classwise_mean_polynomials(patchwise_polynomials, classes, n_clusters=3):
+    representatives = {}
+
+    for class_name in classes:
+        representatives[class_name] = {}
+        for channel in ['red', 'green', 'blue']:
+            vecs = patchwise_polynomials[class_name][channel]
+            if len(vecs) == 0:
+                continue
+            X = torch.stack(vecs).numpy()
+            if len(X) < n_clusters:
+                rep = torch.tensor(X.mean(axis=0))  # fallback
+            else:
+                kmeans = KMeans(n_clusters=n_clusters, n_init='auto').fit(X)
+                center_idx = torch.argmin(torch.tensor([
+                    ((X - c) ** 2).sum() for c in kmeans.cluster_centers_
+                ]))
+                rep = torch.tensor(kmeans.cluster_centers_[center_idx])
+            representatives[class_name][channel] = rep
+
+    print("[INFO] 클래스별 클러스터 기반 대표 다항식 생성 완료 ✅")
+    return representatives
+
+
+def load_data_and_preprocess(degree=2, max_patches_per_image=50, max_images_per_class=5, save_file='patchwise_polynomials.pth'):
     transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))

@@ -2,15 +2,15 @@ import torch
 import torch.nn.functional as F
 from utils.edge import rgb_to_gray_tensor, extract_edges, get_edge_gradient_direction, get_neighbor_pixels_by_gradient
 from utils.polynomial import fit_polynomial_with_gradient
-def prior_matching_loss(input_images, labels, class_representatives, classes, λ=1.0, max_edges=5):
+def prior_matching_loss(input_images, labels, class_representatives, degree, classes, λ=1.0, max_edges=5):
     B, C, H, W = input_images.shape
     device = input_images.device
     total_loss = 0.0
     count = 0
-    num_classes = len(classes)
 
     for b in range(B):
         label_idx = labels[b].item()
+        class_name = classes[label_idx]
         image = input_images[b]
         gray = rgb_to_gray_tensor(image).cpu()
         edge_coords = extract_edges(gray)
@@ -34,7 +34,6 @@ def prior_matching_loss(input_images, labels, class_representatives, classes, λ
                 v1 = image[c_idx, y1, x1].item()
                 v2 = image[c_idx, y2, x2].item()
 
-                # 기울기 계산
                 grad_estimate = v2 - v1
                 gx = (x2n - x1n)
                 gy = (y2n - y1n)
@@ -44,32 +43,20 @@ def prior_matching_loss(input_images, labels, class_representatives, classes, λ
                 gx *= grad_estimate / norm
                 gy *= grad_estimate / norm
 
-                # edge_points를 정확한 튜플 형태로 전달해야 합니다.
                 edge_points = [((x1n, y1n, v1), (x2n, y2n, v2), (gx, gy))]
-                coeff = fit_polynomial_with_gradient(edge_points)  # 튜플로 전달
+                coeff = fit_polynomial_with_gradient(edge_points, degree)
                 if coeff is not None:
                     coeff_list.append(coeff.to(device))
 
             if len(coeff_list) == 0:
                 continue
 
-            avg_coeff = torch.stack(coeff_list).mean(dim=0)  # f_input 계수
+            avg_coeff = torch.stack(coeff_list).mean(dim=0)
 
-            # 모든 클래스와 거리 비교
-            dists = []
-            for class_name in classes:
-                if channel not in class_representatives[class_name]:
-                    dists.append(torch.tensor(1e6, device=device))
-                else:
-                    coeff_target = class_representatives[class_name][channel].to(device)
-                    dist = F.mse_loss(avg_coeff, coeff_target, reduction='sum')
-                    dists.append(dist)
-
-            dists_tensor = torch.stack(dists)  # [num_classes]
-            probs = torch.softmax(-dists_tensor, dim=0)  # 거리 → 유사도 확률
-
-            target_prob = probs[label_idx]
-            loss = -torch.log(target_prob + 1e-8)  # CrossEntropy와 유사한 형태
+            if channel not in class_representatives[class_name]:
+                continue
+            coeff_target = class_representatives[class_name][channel].to(device)
+            loss = F.mse_loss(avg_coeff, coeff_target, reduction='sum')
 
             total_loss += loss
             count += 1

@@ -9,7 +9,7 @@ def train(model, loader, class_representatives, degree, λ, classes, criterion, 
     total = 0
 
     # tqdm progress bar 설정
-    loader = tqdm(loader, desc="[Training]", leave=False)
+    loader = tqdm(loader, desc="[Training]", leave=False, dynamic_ncols=True)
 
     for inputs, labels in loader:
         inputs, labels = inputs.to(device), labels.to(device)
@@ -18,7 +18,7 @@ def train(model, loader, class_representatives, degree, λ, classes, criterion, 
         outputs = model(inputs)
 
         ce_loss = criterion(outputs, labels)
-        prior_loss = prior_matching_loss(inputs, labels, class_representatives, classes, λ)
+        prior_loss = prior_matching_loss(inputs, labels, class_representatives, degree, classes, λ)
         loss = ce_loss + prior_loss
 
         loss.backward()
